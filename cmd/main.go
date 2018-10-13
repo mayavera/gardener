@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -25,12 +24,25 @@ func check(err error) {
 
 const (
 	cmdPing           = "PING"
+	cmdMode           = "MODE"
 	cmdMOTDStart      = "375"
 	cmdMOTDItem       = "372"
 	cmdMOTDEnd        = "376"
 	cmdReplyListStart = "321"
 	cmdReplyListItem  = "322"
 	cmdReplyListEnd   = "323"
+	cmdNowAway        = "306"
+	cmdUnaway         = "305"
+)
+
+const (
+	modeAway          = 'a'
+	modeInvisible     = 'i'
+	modeWallops       = 'w'
+	modeRestricted    = 'r'
+	modeOperator      = 'o'
+	modeLocalOperator = 'O'
+	modeNotifyee      = 's'
 )
 
 func main() {
@@ -45,12 +57,10 @@ func main() {
 
 		reader := bufio.NewReader(conn)
 
-		var motdFrom string
-		var motdBuffer bytes.Buffer
-
 		for {
 			raw, err := reader.ReadString('\n')
 			check(err)
+			raw = strings.TrimSuffix(raw, "\n")
 
 			args := strings.Split(raw, " ")
 
@@ -78,7 +88,8 @@ func main() {
 				for i, arg := range args {
 					if arg == ":-" {
 						if len(args) >= i+1 {
-							motdFrom = args[i+1]
+							fmt.Printf("MOTD from %s\n", args[i+1])
+							fmt.Println("----------")
 						} else {
 							break
 						}
@@ -87,16 +98,55 @@ func main() {
 			case cmdMOTDItem:
 				parts := strings.Split(raw, ":- ")
 				if len(parts) > 1 {
-					motdBuffer.WriteString(parts[1])
+					fmt.Println(parts[1])
 				}
 			case cmdMOTDEnd:
-				fmt.Printf("MOTD from %s:\n", motdFrom)
-				motdFrom = ""
+				fmt.Println("----------")
+			case cmdMode:
+				if len(args) > 2 || args[0] != username {
+					break
+				}
 
-				fmt.Printf(motdBuffer.String())
-				motdBuffer.Reset()
+				modes := args[1:]
+				if len(modes[0]) > 1 {
+					modes[0] = modes[0][1:]
+				}
+
+				for _, mode := range modes {
+					if len(mode) < 2 {
+						break
+					}
+
+					var enabled bool
+					if mode[0] == '+' {
+						enabled = true
+					} else if mode[0] == '-' {
+						enabled = false
+					} else {
+						break
+					}
+
+					switch mode[1] {
+					case modeInvisible:
+						if enabled {
+							fmt.Println("you are invisible")
+						} else {
+							fmt.Println("you are visible")
+						}
+					case modeAway:
+						if enabled {
+							fmt.Println("you are away")
+						} else {
+							fmt.Println("you are active")
+						}
+					}
+				}
+			case cmdNowAway:
+				fmt.Println("you are away")
+			case cmdUnaway:
+				fmt.Println("you are active")
 			default:
-				fmt.Print(raw)
+				fmt.Println(raw)
 			}
 		}
 	}()
