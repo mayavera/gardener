@@ -38,6 +38,9 @@ const (
 	cmdWhoIsServer    = "312"
 	cmdWhoIsIdle      = "317"
 	cmdEndOfWhoIs     = "318"
+	cmdListStart      = "321"
+	cmdListItem       = "322"
+	cmdListEnd        = "323"
 )
 
 const (
@@ -229,6 +232,28 @@ func main() {
 				} else {
 					fmt.Println(raw)
 				}
+			case cmdListStart:
+				fmt.Println("channels:")
+				fmt.Println("----------")
+			case cmdListItem:
+				var channel string
+				if len(args) > 1 {
+					channel = args[1]
+				} else {
+					break
+				}
+
+				var userCount int
+				if len(args) > 2 {
+					userCount, _ = strconv.Atoi(args[2])
+				}
+
+				info := trailer
+
+				fmt.Printf("%s (%d)\n", channel, userCount)
+				fmt.Printf("  %s\n", info)
+			case cmdListEnd:
+				fmt.Println("----------")
 			default:
 				fmt.Println(raw)
 			}
@@ -244,6 +269,9 @@ func main() {
 	check(err)
 
 	_, err = fmt.Fprintf(conn, "WHOIS %s\n", username)
+	check(err)
+
+	_, err = fmt.Fprintln(conn, "LIST")
 	check(err)
 
 	reader := bufio.NewReader(os.Stdin)
