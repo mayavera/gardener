@@ -44,6 +44,10 @@ const (
 )
 
 const (
+	errUnknownCommand = "421"
+)
+
+const (
 	modeAway          = 'a'
 	modeInvisible     = 'i'
 	modeWallops       = 'w'
@@ -254,6 +258,10 @@ func main() {
 				fmt.Printf("  %s\n", info)
 			case cmdListEnd:
 				fmt.Println("----------")
+			case errUnknownCommand:
+				if len(args) >= 2 {
+					fmt.Printf("unknown command: %s\n", args[1])
+				}
 			default:
 				fmt.Println(raw)
 			}
@@ -266,12 +274,6 @@ func main() {
 	check(err)
 
 	_, err = fmt.Fprintf(conn, "NICK %s\n", username)
-	check(err)
-
-	_, err = fmt.Fprintf(conn, "WHOIS %s\n", username)
-	check(err)
-
-	_, err = fmt.Fprintln(conn, "LIST")
 	check(err)
 
 	reader := bufio.NewReader(os.Stdin)
