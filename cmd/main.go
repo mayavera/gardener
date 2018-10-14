@@ -12,9 +12,6 @@ import (
 	"time"
 )
 
-const host = "halcyon.dal.net:6667"
-const username = "mayav"
-const realname = "Maya V."
 const daemonname = "tome"
 
 func check(err error) {
@@ -26,6 +23,7 @@ func check(err error) {
 const (
 	cmdPing           = "PING"
 	cmdMode           = "MODE"
+	cmdJoin           = "JOIN"
 	cmdMOTDStart      = "375"
 	cmdMOTDItem       = "372"
 	cmdMOTDEnd        = "376"
@@ -68,7 +66,41 @@ type WhoisResponse struct {
 	joinedAt     time.Time
 }
 
+type Prefix struct {
+	nick string
+	user string
+	host string
+}
+
+func parsePrefix(raw string) Prefix {
+	prefix := Prefix{}
+
+	parts := strings.Split(raw, "!")
+	if len(parts) > 1 {
+		prefix.nick = parts[0]
+		raw = strings.Join(parts[1:], "")
+	}
+
+	parts = strings.Split(raw, "@")
+	if len(parts) > 1 {
+		prefix.user = parts[0]
+		raw = strings.Join(parts[1:], "")
+	}
+
+	prefix.host = raw
+
+	return prefix
+}
+
 func main() {
+	if len(os.Args) < 3 {
+		log.Fatal("not enough arguments")
+	}
+
+	username := os.Args[1]
+	realname := username
+	host := os.Args[2]
+
 	fmt.Println("connecting to", host)
 	conn, err := net.Dial("tcp", host)
 	check(err)
@@ -97,12 +129,12 @@ func main() {
 				trailer = trailerParts[1]
 			}
 
-			//var prefix string
+			var prefix Prefix
 			var command string
 
 			if len(args) > 0 {
 				if strings.HasPrefix(args[0], ":") {
-					//prefix = args[0][:len(args[0])]
+					prefix = parsePrefix(strings.TrimPrefix(args[0][:len(args[0])], ":"))
 				}
 
 				args = args[1:len(args)]
@@ -262,6 +294,8 @@ func main() {
 				if len(args) >= 2 {
 					fmt.Printf("unknown command: %s\n", args[1])
 				}
+			case cmdJoin:
+				fmt.Printf("%s joined %s\n", prefix.nick, trailer)
 			default:
 				fmt.Println(raw)
 			}
@@ -276,12 +310,22 @@ func main() {
 	_, err = fmt.Fprintf(conn, "NICK %s\n", username)
 	check(err)
 
+	_, err = fmt.Fprintf(conn, "JOIN #mayav\n")
+	check(err)
+
+	_, err = fmt.Fprintf(conn, "MODE %s -i\n", username)
+	check(err)
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		input, err := reader.ReadString('\n')
 		check(err)
 
-		_, err = io.WriteString(conn, input)
-		check(err)
+		if len(input) > 0 {
+			if strings.HasPrefix(input, `/`) && !strings.HasPrefix(input, `//`) && len(input) > 1 {
+				_, err = io.WriteString(conn, input[1:])
+				check(err)
+			}
+		}
 	}
 }
