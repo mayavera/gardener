@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -33,6 +34,10 @@ const (
 	cmdReplyListEnd   = "323"
 	cmdNowAway        = "306"
 	cmdUnaway         = "305"
+	cmdWhoIsUser      = "311"
+	cmdWhoIsServer    = "312"
+	cmdWhoIsIdle      = "317"
+	cmdEndOfWhoIs     = "318"
 )
 
 const (
@@ -44,6 +49,17 @@ const (
 	modeLocalOperator = 'O'
 	modeNotifyee      = 's'
 )
+
+type WhoisResponse struct {
+	nick         string
+	user         string
+	name         string
+	host         string
+	server       string
+	serverInfo   string
+	idleDuration time.Duration
+	joinedAt     time.Time
+}
 
 func main() {
 	fmt.Println("connecting to", host)
@@ -57,12 +73,22 @@ func main() {
 
 		reader := bufio.NewReader(conn)
 
+		whoisResponses := map[string]WhoisResponse{}
+
 		for {
 			raw, err := reader.ReadString('\n')
 			check(err)
 			raw = strings.TrimSuffix(raw, "\n")
 
 			args := strings.Split(raw, " ")
+
+			trailerParts := strings.Split(raw, ":")
+			var trailer string
+			if len(trailerParts) > 2 {
+				trailer = trailerParts[2]
+			} else if len(trailerParts) == 2 && !strings.HasPrefix(raw, ":") {
+				trailer = trailerParts[1]
+			}
 
 			//var prefix string
 			var command string
@@ -145,6 +171,64 @@ func main() {
 				fmt.Println("you are away")
 			case cmdUnaway:
 				fmt.Println("you are active")
+			case cmdWhoIsUser:
+				fmt.Println(raw)
+				res := WhoisResponse{
+					nick: args[1],
+					user: args[2],
+					host: args[3],
+					name: trailer,
+				}
+
+				whoisResponses[res.nick] = res
+			case cmdWhoIsServer:
+				if len(args) < 3 {
+					break
+				}
+
+				nick := args[1]
+				res, found := whoisResponses[nick]
+				if found {
+					res.server = args[2]
+					res.serverInfo = trailer
+					whoisResponses[nick] = res
+				}
+			case cmdWhoIsIdle:
+				nick := args[1]
+				res, found := whoisResponses[nick]
+				if found {
+					numIdleSeconds, err := strconv.Atoi(args[2])
+					if err != nil {
+						break
+					}
+
+					res.idleDuration = time.Duration(numIdleSeconds) * time.Second
+
+					joinedAtUnixTimestamp, err := strconv.ParseInt(args[3], 10, 64)
+					if err != nil {
+						break
+					}
+
+					res.joinedAt = time.Unix(joinedAtUnixTimestamp, 0)
+
+					whoisResponses[nick] = res
+				}
+			case cmdEndOfWhoIs:
+				nick := args[1]
+				res, found := whoisResponses[nick]
+				if found {
+					delete(whoisResponses, nick)
+					fmt.Printf("WHOIS for %s:\n", nick)
+					fmt.Printf("  user: %s\n", res.user)
+					fmt.Printf("  name: %s\n", res.name)
+					fmt.Printf("  host: %s\n", res.host)
+					fmt.Printf("  server: %s\n", res.server)
+					fmt.Printf("  server info: %s\n", res.serverInfo)
+					fmt.Printf("  idle: %s\n", res.idleDuration)
+					fmt.Printf("  joined: %s\n", res.joinedAt)
+				} else {
+					fmt.Println(raw)
+				}
 			default:
 				fmt.Println(raw)
 			}
@@ -157,6 +241,9 @@ func main() {
 	check(err)
 
 	_, err = fmt.Fprintf(conn, "NICK %s\n", username)
+	check(err)
+
+	_, err = fmt.Fprintf(conn, "WHOIS %s\n", username)
 	check(err)
 
 	reader := bufio.NewReader(os.Stdin)
